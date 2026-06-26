@@ -35,29 +35,37 @@ class SupabaseClient:
             print(f"❌ Error inserting documents: {e}")
             return False, []
 
-    def hybrid_search(self, query_text: str, query_embedding: list[float], top_k: int = 5) -> list[dict]:
+    def hybrid_search(
+        self, 
+        query_text: str, 
+        query_embedding: list[float], 
+        top_k: int = 5,
+        source_filter: str = None
+    ) -> list[dict]:
         """
-        Performs hybrid search using BM25 (keyword) + Vector similarity via RPC.
+        Hybrid search with optional source filtering.
         
         Args:
-            query_text: Raw user query for keyword matching.
-            query_embedding: Vector representation of the query.
-            top_k: Number of results to return.
+            query_text: User's question
+            query_embedding: Query vector
+            top_k: Number of results
+            source_filter: Optional source name to filter (e.g., "Salman_Siddique_resume.pdf")
             
         Returns:
             List of relevant document chunks.
         """
         try:
-            # Calls the 'match_documents' SQL function we will create next
             response = self.client.rpc(
-                'match_documents', 
+                'match_documents',
                 {
-                    'query_text': query_text,
                     'query_embedding': query_embedding,
-                    'match_count': top_k
+                    'query_text': query_text,
+                    'match_count': top_k,
+                    'source_filter': source_filter
                 }
             ).execute()
+            
             return response.data if response.data else []
         except Exception as e:
-            print(f"❌ Error during hybrid search: {e}")
+            print(f"❌ Hybrid search error: {e}")
             return []

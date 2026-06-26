@@ -43,11 +43,6 @@ Thumbs.db
 *.log
 logs/
 
-# Test files (optional - agar push nahi karna chahte)
-testRag.py
-test_retrieval.py
-test_chat.py
-
 # Temporary files
 *.tmp
 temp/

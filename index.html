@@ -196,6 +196,15 @@
                     Hello! I'm DocuMind. Ask me anything about your uploaded documents.
                 </div>
             </div>
+            
+            <!-- Source Filter Dropdown -->
+            <div style="margin-bottom: 15px;">
+                <label style="font-weight: 600; margin-right: 10px;">📁 Search in:</label>
+                <select id="sourceFilter" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; min-width: 250px;">
+                    <option value="">All Documents</option>
+                </select>
+            </div>
+            
             <div class="input-group">
                 <input type="text" id="queryInput" placeholder="Ask a question..." onkeypress="handleKeyPress(event)">
                 <button onclick="sendQuery()" id="sendBtn">Send</button>
@@ -228,8 +237,30 @@
         const API_URL = 'http://localhost:8000';
         let chatHistory = [];  // Conversation history
 
+        // Load available documents on page load
+        async function loadDocuments() {
+            try {
+                const response = await fetch(`${API_URL}/documents`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const select = document.getElementById('sourceFilter');
+                    data.documents.forEach(doc => {
+                        const option = document.createElement('option');
+                        option.value = doc.source;
+                        option.textContent = `${doc.source} (${doc.chunk_count} chunks)`;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load documents:', error);
+            }
+        }
+
         // Load history from localStorage on page load
         window.addEventListener('DOMContentLoaded', () => {
+            loadDocuments();  // Load available documents
+            
             const saved = localStorage.getItem('documind_chat_history');
             if (saved) {
                 chatHistory = JSON.parse(saved);
@@ -279,6 +310,7 @@
         async function sendQuery() {
             const queryInput = document.getElementById('queryInput');
             const sendBtn = document.getElementById('sendBtn');
+            const sourceFilter = document.getElementById('sourceFilter');
             const query = queryInput.value.trim();
 
             if (!query) return;
@@ -309,7 +341,8 @@
                     body: JSON.stringify({ 
                         query, 
                         top_k: 3,
-                        history: chatHistory.slice(0, -1)
+                        history: chatHistory.slice(0, -1),
+                        source_filter: sourceFilter.value || null
                     })
                 });
 

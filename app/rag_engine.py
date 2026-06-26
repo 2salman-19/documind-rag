@@ -10,6 +10,7 @@ from llama_index.core import Document
 from llama_index.core.node_parser import SemanticSplitterNodeParser
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from app.supabase_client import SupabaseClient
+from app.reranker import get_reranker
 from config.settings import get_settings
 
 
@@ -70,47 +71,87 @@ class RAGEngine:
         else:
             print("⚠️ No chunks generated to store.")
 
-    def query(self, user_query: str, top_k: int = 5) -> list[str]:
+    def query(
+        self, 
+        user_query: str, 
+        top_k: int = 5, 
+        use_reranker: bool = True,
+        source_filter: str = None
+    ) -> list[str]:
         """
-        Retrieves relevant context using Hybrid Search.
+        Retrieves relevant context with optional source filtering.
         
         Args:
-            user_query: The question asked by the user.
-            top_k: Number of relevant chunks to retrieve.
+            user_query: User's question
+            top_k: Number of chunks to retrieve
+            use_reranker: Whether to use re-ranker
+            source_filter: Optional source name to filter
             
         Returns:
-            List of relevant text chunks.
+            List of relevant text chunks (re-ranked if enabled).
         """
         print(f"🔍 Searching for: '{user_query}'")
+        if source_filter:
+            print(f"📁 Filtering by source: '{source_filter}'")
         
         # 1. Embed the user's query
         query_embedding = self.embed_model.get_text_embedding(user_query)
         
-        # 2. Perform Hybrid Search via Supabase RPC
+        # 2. Retrieve MORE chunks initially (for re-ranking)
+        retrieval_k = top_k * 2 if use_reranker else top_k
+        
         results = self.db_client.hybrid_search(
             query_text=user_query,
             query_embedding=query_embedding,
-            top_k=top_k
+            top_k=retrieval_k,
+            source_filter=source_filter
         )
         
-        # 3. Extract only the content text
-        retrieved_contexts = [item['content'] for item in results]
+        # 3. Extract chunks
+        retrieved_chunks = [item['content'] for item in results]
         
-        if retrieved_contexts:
-            print(f"✅ Found {len(retrieved_contexts)} relevant chunks.")
-        else:
+        if not retrieved_chunks:
             print("❌ No relevant documents found.")
+            return []
+        
+        # 4. Deduplication
+        unique_chunks = []
+        seen_hashes = set()
+        
+        for chunk in retrieved_chunks:
+            chunk_hash = hash(chunk[:200])
+            if chunk_hash not in seen_hashes:
+                unique_chunks.append(chunk)
+                seen_hashes.add(chunk_hash)
+        
+        print(f"✅ Retrieved {len(retrieved_chunks)} chunks, {len(unique_chunks)} unique.")
+        
+        # 5. Apply re-ranker if enabled
+        if use_reranker and len(unique_chunks) > top_k:
+            print(f"🔄 Re-ranking {len(unique_chunks)} chunks to select top {top_k}...")
+            reranker = get_reranker()
+            reranked_chunks = reranker.rerank(
+                query=user_query,
+                chunks=unique_chunks,
+                top_k=top_k
+            )
             
-        return retrieved_contexts
+            final_chunks = [chunk for chunk, score in reranked_chunks]
+            print(f"✅ Re-ranked to {len(final_chunks)} most relevant chunks.")
+            return final_chunks
+        else:
+            return unique_chunks[:top_k]
 
-    def generate_answer(self, user_query: str, top_k: int = 3, history: list[dict] = None) -> dict:
+    def generate_answer(self, user_query: str, top_k: int = 3, history: list[dict] = None, use_reranker: bool = True, source_filter: str = None) -> dict:
         """
-        Complete RAG pipeline with conversation history support.
+        Complete RAG pipeline with re-ranker and conversation history support.
         
         Args:
             user_query: User's current question
-            top_k: Number of chunks to retrieve
-            history: List of previous messages [{"role": "user/assistant", "content": "..."}]
+            top_k: Number of chunks to retrieve (after re-ranking)
+            history: List of previous messages
+            use_reranker: Whether to use re-ranker (default: True)
+            source_filter: Optional source filter
             
         Returns:
             Dict with 'answer' and 'sources'
@@ -120,8 +161,8 @@ class RAGEngine:
         
         print(f"\n🧠 Generating answer for: '{user_query}'")
         
-        # 1. Retrieve relevant chunks (only for current query, not history)
-        chunks = self.query(user_query, top_k=top_k)
+        # 1. Retrieve relevant chunks WITH RE-RANKER
+        chunks = self.query(user_query, top_k=top_k, use_reranker=use_reranker, source_filter=source_filter)
         
         if not chunks:
             return {
@@ -197,25 +238,17 @@ Answer:"""
                 "sources": chunks
             }
 
-    def generate_answer_stream(self, user_query: str, top_k: int = 3, history: list[dict] = None):
+    def generate_answer_stream(self, user_query: str, top_k: int = 3, history: list[dict] = None, use_reranker: bool = True, source_filter: str = None):
         """
-        Streaming version of generate_answer - returns generator for word-by-word output.
-        
-        Args:
-            user_query: User's current question
-            top_k: Number of chunks to retrieve
-            history: Conversation history
-            
-        Yields:
-            Individual words/tokens as they are generated
+        Streaming version with re-ranker support.
         """
         from llama_index.llms.groq import Groq
         from config.settings import get_settings
         
         print(f"\n🧠 Streaming answer for: '{user_query}'")
         
-        # 1. Retrieve relevant chunks
-        chunks = self.query(user_query, top_k=top_k)
+        # 1. Retrieve relevant chunks WITH RE-RANKER
+        chunks = self.query(user_query, top_k=top_k, use_reranker=use_reranker, source_filter=source_filter)
         
         if not chunks:
             yield "Sorry, I couldn't find relevant information in the documents."

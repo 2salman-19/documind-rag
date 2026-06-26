@@ -59,6 +59,7 @@ class ChatRequest(BaseModel):
     query: str
     top_k: int = 3
     history: list[dict] = []  # Conversation history
+    source_filter: str = None  # NEW: Optional source filter
 
 
 class ChatResponse(BaseModel):
@@ -119,7 +120,8 @@ async def chat(request: ChatRequest):
         result = rag_engine.generate_answer(
             user_query=request.query,
             top_k=request.top_k,
-            history=request.history
+            history=request.history,
+            source_filter=request.source_filter
         )
         return ChatResponse(
             answer=result["answer"],
@@ -220,7 +222,8 @@ async def chat_stream(request: ChatRequest):
         for token in rag_engine.generate_answer_stream(
             user_query=request.query,
             top_k=request.top_k,
-            history=request.history
+            history=request.history,
+            source_filter=request.source_filter
         ):
             # Send as Server-Sent Event format
             yield f"data: {json.dumps({'token': token})}\n\n"
@@ -236,6 +239,46 @@ async def chat_stream(request: ChatRequest):
             "Connection": "keep-alive",
         }
     )
+
+
+@app.get("/documents")
+async def list_documents():
+    """
+    List all uploaded documents with metadata.
+    
+    Returns:
+        List of documents with source names, chunk counts, and character counts.
+    """
+    if not rag_engine:
+        raise HTTPException(status_code=503, detail="RAG Engine not initialized")
+    
+    try:
+        # Query unique sources from documents table
+        response = rag_engine.db_client.client.table('documents').select('metadata').execute()
+        
+        # Extract unique sources with stats
+        sources = {}
+        for row in response.data:
+            metadata = row.get('metadata', {})
+            source = metadata.get('source', 'Unknown')
+            
+            if source not in sources:
+                sources[source] = {
+                    'source': source,
+                    'chunk_count': 0,
+                    'total_chars': 0
+                }
+            
+            sources[source]['chunk_count'] += 1
+            sources[source]['total_chars'] += metadata.get('char_count', 0)
+        
+        return {
+            "success": True,
+            "documents": list(sources.values()),
+            "total_documents": len(sources)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
 
 
 if __name__ == "__main__":
