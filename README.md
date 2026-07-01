@@ -1,20 +1,23 @@
-# 🧠 DocuMind RAG
+# 🧠 DocuMind RAG: Agentic AI Document Q&A
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-&%20LangGraph-orange.svg)](https://www.langchain.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Working%20Prototype-orange.svg)](.)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg)](.)
 
-**AI-powered Document Q&A System with Hybrid Search, Re-ranking, and Real-Time Streaming**
+**AI-powered Document Q&A System with Hybrid Search, Re-ranking, Agentic Tool Routing, and Real-Time Streaming**
 
-DocuMind RAG is a working prototype of a Retrieval-Augmented Generation system that enables users to upload documents (PDF, DOCX, TXT), ask questions in natural language, and receive accurate answers with intelligent re-ranking and real-time streaming responses.
+DocuMind RAG is a production-ready Retrieval-Augmented Generation system that enables users to upload documents (PDF, DOCX, TXT), ask questions in natural language, and receive accurate answers with intelligent re-ranking and real-time streaming responses. **Phase 2** introduces an Agentic AI upgrade powered by LangGraph — the agent uses the ReAct pattern for autonomous decision-making, dynamically routing queries to RAG search, web search, or a safe calculator based on intent.
 
 **GitHub:** [github.com/2salman-19/documind-rag](https://github.com/2salman-19/documind-rag)  
 **Author:** Salman Siddique  
-**Last Updated:** June 2026  
-**Version:** 1.1.0
+**Last Updated:** July 2026  
+**Version:** 2.0.0
 
 ## ✨ Key Features
+
+### Core RAG Capabilities (Phase 1)
 
 ✅ **Multi-Format Document Upload** - PDF, DOCX, TXT with validation  
 ✅ **Semantic Chunking** - Meaning-based splitting for better context preservation  
@@ -27,6 +30,14 @@ DocuMind RAG is a working prototype of a Retrieval-Augmented Generation system t
 ✅ **LocalStorage Persistence** - Chat history survives page refreshes  
 ✅ **Clean AI Responses** - Professional answers without inline citations  
 ✅ **Error Handling** - Comprehensive validation and user-friendly feedback  
+
+### 🤖 Agentic AI Capabilities (Phase 2 - NEW!)
+
+✅ **ReAct Pattern Implementation (LangGraph)**  
+✅ **Dynamic Tool Routing (RAG, Web Search, Calculator)**  
+✅ **Real-Time Thought Streaming (Visualizes decision-making live)**  
+✅ **Dual-Mode Interface (Toggle between RAG and Agent mode)**  
+✅ **Safe Math Execution (Bypasses LLM hallucinations)**  
 
 ## 🚀 Quick Start
 
@@ -79,6 +90,8 @@ python -m uvicorn app.main:app --reload --port 8000
 | **Database** | Supabase (PostgreSQL + pgvector) | Document storage & vector search |
 | **Embeddings** | sentence-transformers/all-MiniLM-L6-v2 | 384-dim, 80MB, CPU-only |
 | **LLM** | Groq (Llama-3.3-70B-Versatile) | Fast, high-quality responses |
+| **Agent Framework** | LangChain & LangGraph | ReAct pattern, Tool calling, State management |
+| **Web Search** | DuckDuckGo / Tavily API | Real-time internet data retrieval |
 | **Chunking** | LlamaIndex SemanticSplitterNodeParser | Semantic document splitting |
 | **Re-ranker** | CrossEncoder (ms-marco-MiniLM-L-6-v2) | Query-aware relevance scoring |
 | **Search** | Hybrid (BM25 30% + Vector 70%) | Keyword + semantic search |
@@ -91,6 +104,7 @@ documind-rag/
 ├── app/
 │   ├── main.py                    # FastAPI application & endpoints
 │   ├── rag_engine.py              # Core RAG pipeline with re-ranker
+│   ├── agent.py                   # 🤖 LangChain Agent & Tool definitions (NEW)
 │   ├── supabase_client.py         # Database wrapper
 │   ├── document_processor.py      # PDF/DOCX/TXT parser
 │   ├── reranker.py                # Cross-encoder re-ranking module
@@ -98,7 +112,7 @@ documind-rag/
 ├── config/
 │   ├── settings.py                # Pydantic environment configuration
 │   └── __init__.py
-├── index.html                     # Frontend single-page app
+├── index.html                     # Frontend single-page app (Dual Mode)
 ├── requirements.txt               # Python dependencies
 ├── README.md                      # This file
 ├── DOCUMENTATION.md               # Technical deep dive
@@ -145,6 +159,34 @@ Content-Type: application/json
 # Response: Server-Sent Events stream with tokens
 ```
 
+### 🤖 Agentic Endpoints (NEW)
+
+#### Agent Chat (Non-streaming)
+```bash
+POST /chat-agent
+Content-Type: application/json
+{
+  "query": "Calculate 15% of 256 and tell me what my resume says about Python",
+  "top_k": 3,
+  "history": [...],
+  "source_filter": null
+}
+# Response: {"answer": "...", "sources": [...], "thoughts": [...]}
+```
+
+#### Agent Chat (Streaming with SSE Thoughts)
+```bash
+POST /chat-agent-stream
+Content-Type: application/json
+{
+  "query": "Calculate 15% of 256 and tell me what my resume says about Python",
+  "top_k": 3,
+  "history": [...],
+  "source_filter": "Resume.pdf"
+}
+# Response: Server-Sent Events stream with thought events + tokens
+```
+
 ### List Documents
 ```bash
 GET /documents
@@ -178,6 +220,8 @@ Content-Type: application/json
 ```
 
 ## 🎯 How It Works
+
+### 1. Standard RAG Flow (Phase 1)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -231,6 +275,39 @@ Content-Type: application/json
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### 2. Agentic Flow (Phase 2)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    USER QUERY                                │
+│   (e.g., hybrid: math + document + web search)             │
+└────────────────────────┬────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│         AGENT BRAIN (LangGraph ReAct)                        │
+│        ├─ Reason: Analyze query intent                       │
+│        ├─ Act: Select appropriate tool(s)                    │
+│        └─ Observe: Process tool results                      │
+└────────────────────────┬────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│              TOOL EXECUTION                                  │
+│        ├─ RAG Search → Private document retrieval           │
+│        ├─ Web Search → DuckDuckGo / Tavily API              │
+│        └─ Calculator → Safe math evaluation                 │
+└────────────────────────┬────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│         LLM SYNTHESIS (Groq - Llama-3.3-70B)                │
+│        Combines tool outputs into coherent answer            │
+└────────────────────────┬────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│      STREAMING RESPONSE (SSE)                                │
+│        💭 Thought events + token-by-token answer             │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## 🔑 Environment Variables
 
 ```bash
@@ -240,6 +317,9 @@ GROQ_API_KEY=gsk_xxxxxxxxxxxxx
 # Required: Supabase (free tier at supabase.com)
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_KEY=eyJ...
+
+# Optional: Premium web search (tavily.com)
+TAVILY_API_KEY=tvly_xxxxxxxxxxxxx
 
 # Optional: Application Settings
 ENVIRONMENT=development
@@ -312,6 +392,8 @@ black app/
 ## 🎨 Frontend Features
 
 - **Tabbed Interface** - Chat & Upload tabs
+- **Dual-Mode Toggle** - Switch between RAG and Agent mode
+- **Thought Visualization** - See AI reasoning in real-time yellow bubbles
 - **Real-Time Streaming** - Typing effect as response arrives
 - **Chat History** - Persisted in localStorage
 - **Source Filter Dropdown** - Search within specific documents
@@ -336,9 +418,32 @@ User: "What are the key skills?"
 Assistant: (searches only in Resume.pdf)
 ```
 
+### 🤖 Agent Mode (Tool Selection)
+
+```
+User: "Calculate 15% of 256 and tell me what my resume says about Python"
+
+💭 Thought: This query has two parts — a math calculation and a document search.
+            I'll use the calculator for 15% of 256, then search the resume for Python.
+
+💭 Thought: Calling calculator tool with expression: 256 * 0.15
+💭 Thought: Result is 38.4. Now searching uploaded documents for Python skills...
+
+💭 Thought: Calling RAG search tool with query: "Python skills experience"
+💭 Thought: Found relevant resume chunks mentioning Python, Django, and data analysis.
+
+Assistant: "15% of 256 is 38.4. According to your resume, you have strong Python
+           experience including Django development and data analysis projects."
+```
+
 ## 🤝 Contributing
 
-This is a working prototype. Areas for future enhancement:
+This is a production-ready system. Areas for future enhancement:
+- Human-in-the-Loop (HITL) approval gates
+- Long-Term Memory
+- Advanced Code Interpreter (CSV/Graphs)
+- File Generation (PDF/Excel)
+- Multi-Agent Orchestration
 - Document management UI (upload, delete, organize)
 - User authentication and multi-user support
 - Database-level conversation persistence
@@ -351,12 +456,17 @@ This is a working prototype. Areas for future enhancement:
 ## 📖 Learning Resources
 
 - [FastAPI Tutorial](https://fastapi.tiangolo.com/tutorial/)
+- [LangChain Docs](https://python.langchain.com/docs/)
+- [LangGraph Docs](https://langchain-ai.github.io/langgraph/)
 - [LlamaIndex Docs](https://docs.llamaindex.ai/)
 - [Supabase Docs](https://supabase.com/docs)
 - [Groq API Docs](https://console.groq.com/docs)
 - [Sentence Transformers](https://www.sbert.net/)
 
 ## ❓ FAQ
+
+**Q: How does the Agent decide which tool to use?**  
+A: The Agent uses the ReAct (Reason + Act) pattern via LangGraph. It analyzes the query intent and selects the appropriate tool (RAG for documents, web search for real-time info, calculator for math).
 
 **Q: Why does the re-ranker improve accuracy?**  
 A: It uses a trained CrossEncoder that understands semantic relevance to your specific query, filtering out less relevant chunks that BM25 might have ranked high.
@@ -394,6 +504,7 @@ MIT License - Feel free to use for personal & commercial projects. See [LICENSE]
 - Groq for free, fast LLM access
 - Supabase for PostgreSQL + pgvector
 - LlamaIndex for semantic chunking
+- LangChain & LangGraph for agentic orchestration
 - Sentence Transformers for embeddings
 - HuggingFace community for open models
 

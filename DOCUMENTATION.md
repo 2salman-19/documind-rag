@@ -1,7 +1,8 @@
 # 📖 DocuMind RAG - Technical Documentation
 
-**Version:** 1.1.0  
-**Last Updated:** June 2026  
+**Version:** 2.0.0  
+**Last Updated:** July 2026  
+**Status:** Production Ready  
 **Project:** [github.com/2salman-19/documind-rag](https://github.com/2salman-19/documind-rag)  
 **Author:** Salman Siddique
 
@@ -18,8 +19,12 @@
 7. [Setup Instructions](#setup-instructions)
 8. [Configuration](#configuration)
 9. [Performance Tuning](#performance-tuning)
-10. [Troubleshooting](#troubleshooting)
-11. [Future Enhancements](#future-enhancements)
+10. [Security Features](#security-features)
+11. [Example Usage](#example-usage)
+12. [Troubleshooting](#troubleshooting)
+13. [Future Enhancements](#future-enhancements)
+14. [Changelog](#changelog)
+15. [FAQ](#faq)
 
 ---
 
@@ -32,6 +37,8 @@
 │                        FRONTEND (HTML5/JS)                        │
 │                      Single Page Application                      │
 │         ├─ Chat Interface (Streaming Display)                     │
+│         ├─ Dual-Mode Toggle (RAG / Agent Mode)                   │
+│         ├─ Thought Visualization (Agent reasoning bubbles)       │
 │         ├─ Document Upload (PDF/DOCX/TXT)                        │
 │         └─ Source Filter Dropdown                                │
 └────────────────────────────┬─────────────────────────────────────┘
@@ -45,6 +52,8 @@
 │  │  ├─ /health (GET)                                           │ │
 │  │  ├─ /chat (POST)                                            │ │
 │  │  ├─ /chat-stream (POST)                                     │ │
+│  │  ├─ /chat-agent (POST)              ← NEW (Phase 2)        │ │
+│  │  ├─ /chat-agent-stream (POST)         ← NEW (Phase 2)        │ │
 │  │  ├─ /documents (GET)                                        │ │
 │  │  ├─ /upload-file (POST)                                     │ │
 │  │  └─ /upload (POST)                                          │ │
@@ -52,33 +61,33 @@
 │                             │                                     │
 │                             ↓                                     │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ RAG Engine (app/rag_engine.py)                              │ │
-│  │                                                              │ │
-│  │  1. Document Processing                                     │ │
-│  │     └─ Semantic Chunking (LlamaIndex)                      │ │
-│  │                                                              │ │
-│  │  2. Embedding Generation                                    │ │
-│  │     └─ all-MiniLM-L6-v2 (384 dims, CPU-only)              │ │
-│  │                                                              │ │
-│  │  3. Hybrid Retrieval                                        │ │
-│  │     ├─ Query embedding                                      │ │
-│  │     └─ Supabase hybrid_search (BM25 + Vector)              │ │
-│  │                                                              │ │
-│  │  4. Re-ranking (NEW!)                                       │ │
-│  │     └─ CrossEncoder semantic relevance                      │ │
-│  │                                                              │ │
-│  │  5. LLM Answer Generation                                   │ │
-│  │     └─ Groq (Llama-3.3-70B-Versatile)                      │ │
-│  └─────────────────────────────────────────────────────────────┘ │
+│  │ Agent Brain (app/agent.py)              ← NEW (Phase 2)    │ │
+│  │  ├─ LangGraph ReAct Agent                                   │ │
+│  │  ├─ Tool: rag_search  ──────────────────┐                  │ │
+│  │  └─ Tool: calculator  ─────────────┐    │                  │ │
+│  └────────────────────────────────────│────│──────────────────┘ │
+│                                       │    │                     │
+│                                       ↓    ↓                     │
+│  ┌──────────────────────────┐  ┌─────────────────────────────┐  │
+│  │ Calculator (safe eval)   │  │ RAG Engine (rag_engine.py)  │  │
+│  │ Regex-validated math     │  │                              │  │
+│  └──────────────────────────┘  │  1. Document Processing     │  │
+│                                 │     └─ Semantic Chunking    │  │
+│                                 │  2. Embedding Generation    │  │
+│                                 │  3. Hybrid Retrieval        │  │
+│                                 │  4. Re-ranking              │  │
+│                                 │  5. LLM Answer Generation   │  │
+│                                 └─────────────────────────────┘  │
 │                             │                                     │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ Supporting Modules                                          │ │
+│  │  ├─ app/agent.py (LangChain Agent & Tools)                 │ │
 │  │  ├─ app/supabase_client.py (Database wrapper)              │ │
 │  │  ├─ app/document_processor.py (PDF/DOCX/TXT parser)        │ │
 │  │  ├─ app/reranker.py (CrossEncoder wrapper)                 │ │
 │  │  └─ config/settings.py (Environment config)                │ │
 │  └─────────────────────────────────────────────────────────────┘ │
-└────────────────────────────┬─────────────────────────────────────┘
+└────────────────────────────┬────────────────────────────────────┘
                              │ (Supabase RPC + HTTP)
                              ↓
 ┌──────────────────────────────────────────────────────────────────┐
@@ -140,6 +149,31 @@
 7. On completion, save to localStorage
 ```
 
+### Data Flow: Agentic Request
+
+```
+1. User types query in Agent Mode (frontend toggle)
+   ↓
+2. Frontend sends: {"query": "...", "history": [...], "source_filter": "..."}
+   ↓
+3. Backend receives POST /chat-agent-stream
+   ↓
+4. Agent Brain (agent.py) processes:
+   a) User Query received
+   b) Agent Intent Analysis (ReAct Reason step)
+   c) Tool Selection → rag_search OR calculator
+   d) Tool Execution → RAG Engine query OR safe math eval
+   e) Observation → Agent reads tool output
+   f) LLM Synthesis → Groq combines results into final answer
+   g) SSE Stream → thoughts + answer tokens to frontend
+   ↓
+5. Frontend displays yellow thought bubbles (💭) in real-time
+   ↓
+6. Final answer streams word-by-word
+   ↓
+7. On completion, save to localStorage
+```
+
 ---
 
 ## System Components
@@ -157,6 +191,8 @@
 
 **Key Features:**
 - Tabbed interface (Chat + Upload)
+- **Dual-Mode Interface** — Toggle between RAG Mode and Agent Mode
+- **Thought Visualization** — Real-time yellow bubbles showing agent reasoning (💭)
 - Real-time streaming display
 - Document source filter dropdown
 - File upload with validation
@@ -186,6 +222,23 @@ while (true) {
 }
 ```
 
+**Agent Mode Streaming:**
+```javascript
+// Agent mode uses /chat-agent-stream with typed SSE events
+const endpoint = mode === 'agent' ? '/chat-agent-stream' : '/chat-stream';
+
+for (const line of text.split('\n')) {
+    if (line.startsWith('data: ')) {
+        const event = JSON.parse(line.slice(6));
+        if (event.type === 'thought') {
+            displayThoughtBubble(event.content);  // Yellow bubble
+        } else if (event.type === 'answer_token') {
+            appendToAnswer(event.content);
+        }
+    }
+}
+```
+
 ### 2. FastAPI Backend (`app/main.py`)
 
 **Purpose:** HTTP API server for chat and file uploads
@@ -196,6 +249,7 @@ while (true) {
 - Pydantic validation
 - Streaming responses via SSE
 - Error handling with HTTP exceptions
+- Agent Brain initialization at startup (lifespan)
 
 **Endpoints:**
 
@@ -204,6 +258,8 @@ while (true) {
 | GET | `/health` | Server status check |
 | POST | `/chat` | Non-streaming Q&A |
 | POST | `/chat-stream` | Streaming Q&A |
+| POST | `/chat-agent` | Non-streaming agentic Q&A |
+| POST | `/chat-agent-stream` | Streaming agentic Q&A with thoughts |
 | GET | `/documents` | List uploaded documents |
 | POST | `/upload` | Upload text |
 | POST | `/upload-file` | Upload PDF/DOCX/TXT |
@@ -220,6 +276,17 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[str]
+
+class AgentChatRequest(BaseModel):
+    query: str
+    top_k: int = 3
+    history: list = []
+    source_filter: Optional[str] = None
+
+class AgentChatResponse(BaseModel):
+    thoughts: list[dict]
+    final_answer: str
+    success: bool
 ```
 
 ### 3. RAG Engine (`app/rag_engine.py`)
@@ -418,6 +485,72 @@ SUPABASE_SERVICE_KEY=eyJ...
 ENVIRONMENT=development
 DEBUG=False
 ```
+
+### 7. Agent Brain (`app/agent.py`)
+
+**Purpose:** Autonomous decision-making layer that extends RAG with dynamic tool routing
+
+**Framework:** LangChain & LangGraph with the **ReAct (Reason + Act)** pattern
+
+**Architecture:**
+```
+User Query
+    ↓
+LangGraph ReAct Agent (create_react_agent)
+    ↓
+┌─────────────────────────────────────┐
+│  Reason: Analyze query intent       │
+│  Act: Select and invoke tool        │
+│  Observe: Process tool output       │
+│  (Repeat until answer ready)        │
+└─────────────────────────────────────┘
+    ↓
+Final Answer (+ thought trace)
+```
+
+**Active Tools (2):**
+
+| Tool | Description | Implementation |
+|------|-------------|----------------|
+| `rag_search` | Searches uploaded private documents | Wraps `RAGEngine.query()` as a LangChain Tool |
+| `calculator` | Safe mathematical expression evaluation | Regex-validated `eval()` — only digits and operators allowed |
+
+**Disabled Tool (Planned Phase 2.1):**
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `web_search` | **Disabled** | DuckDuckGo/Tavily integration is implemented in code but commented out due to dependency conflicts. Planned for Phase 2.1. |
+
+**LLM Configuration:**
+```python
+self.llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    api_key=self.settings.GROQ_API_KEY,
+    temperature=0.1,  # Lower temperature for deterministic tool routing
+)
+
+self.agent = create_react_agent(
+    model=self.llm,
+    tools=[rag_search_tool, calculator_tool],
+)
+```
+
+**Key Methods:**
+
+#### `chat(query, history)`
+- Invokes the ReAct agent with system prompt + user query
+- Extracts thought trace (tool calls, observations) from message history
+- Returns `{thoughts, final_answer, success}`
+
+#### `chat_stream(query, history)`
+- Same as `chat()` but yields typed SSE events
+- Event types: `thinking_start`, `thought`, `thinking_end`, `answer_start`, `answer_token`, `answer_end`, `done`
+
+**Thought Extraction:**
+The agent parses LangGraph message history to build a human-readable thought trace:
+- **thought** — Agent decides to use a tool
+- **action** — Tool invocation recorded
+- **observation** — Tool output (truncated to 500 chars)
 
 ---
 
@@ -819,6 +952,137 @@ while (true) {
 
 ---
 
+### Agentic Endpoints
+
+#### POST /chat-agent
+
+**Purpose:** Non-streaming agentic chat — agent autonomously selects tools (RAG or Calculator)
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/chat-agent \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Calculate 15% of 256 and tell me what my resume says about Python",
+    "top_k": 3,
+    "history": [],
+    "source_filter": null
+  }'
+```
+
+**Request Parameters:**
+- `query` (str, required): User's question (may require multiple tools)
+- `top_k` (int, optional, default=3): Number of chunks for RAG search tool
+- `history` (list, optional, default=[]): Previous messages for context
+- `source_filter` (str, optional): Filter RAG search by document source
+
+**Response (200 OK):**
+```json
+{
+  "thoughts": [
+    {
+      "type": "thought",
+      "content": "I need to use calculator to find information."
+    },
+    {
+      "type": "action",
+      "content": "Using tool: calculator"
+    },
+    {
+      "type": "observation",
+      "content": "38.4"
+    },
+    {
+      "type": "thought",
+      "content": "I need to use rag_search to find information."
+    },
+    {
+      "type": "action",
+      "content": "Using tool: rag_search"
+    },
+    {
+      "type": "observation",
+      "content": "Resume chunk: Strong Python experience with Django..."
+    }
+  ],
+  "final_answer": "15% of 256 is 38.4. According to your resume, you have strong Python experience including Django development and data analysis projects.",
+  "success": true
+}
+```
+
+**Response (503):**
+```json
+{"detail": "Agent Brain not initialized"}
+```
+
+---
+
+#### POST /chat-agent-stream
+
+**Purpose:** Streaming agentic chat with real-time thought visualization via SSE
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/chat-agent-stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Calculate 15% of 256 and tell me what my resume says about Python",
+    "top_k": 3,
+    "history": [],
+    "source_filter": "Resume.pdf"
+  }'
+```
+
+**Response (200 OK - Event Stream):**
+```
+data: {"type": "thinking_start", "content": ""}
+
+data: {"type": "thought", "content": "I need to use calculator to find information."}
+
+data: {"type": "thought", "content": "Using tool: calculator"}
+
+data: {"type": "thought", "content": "38.4"}
+
+data: {"type": "thought", "content": "I need to use rag_search to find information."}
+
+data: {"type": "thought", "content": "Using tool: rag_search"}
+
+data: {"type": "thought", "content": "Resume chunk: Strong Python experience..."}
+
+data: {"type": "thinking_end", "content": ""}
+
+data: {"type": "answer_start", "content": ""}
+
+data: {"type": "answer_token", "content": "15% "}
+
+data: {"type": "answer_token", "content": "of "}
+
+data: {"type": "answer_token", "content": "256 "}
+
+data: {"type": "answer_token", "content": "is "}
+
+data: {"type": "answer_token", "content": "38.4. "}
+
+data: {"type": "answer_end", "content": ""}
+
+data: {"type": "done", "content": ""}
+```
+
+**SSE Event Types:**
+
+| Event Type | Description | Frontend Action |
+|------------|-------------|-----------------|
+| `thinking_start` | Agent begins reasoning | Show "thinking" indicator |
+| `thought` | Agent reasoning step or tool output | Display yellow thought bubble (💭) |
+| `thinking_end` | Agent finished reasoning | Hide "thinking" indicator |
+| `answer_start` | Final answer begins | Prepare answer display area |
+| `answer_token` | Single word/token of final answer | Append to answer (typing effect) |
+| `answer_end` | Final answer complete | Finalize answer display |
+| `done` | Stream complete | Save to localStorage |
+| `error` | Error occurred | Display error message |
+
+---
+
 #### GET /documents
 
 **Purpose:** List all uploaded documents with metadata
@@ -958,6 +1222,9 @@ sentence-transformers==5.6.0
 python-docx==0.8.11
 pypdf==4.0.1
 pydantic-settings==2.1.0
+langchain==0.3.x
+langgraph==1.2.x
+langchain-groq==0.2.x
 ```
 
 ### 4. Supabase Setup
@@ -999,6 +1266,8 @@ Output:
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8000
 INFO:     Started server process
+✅ RAG Engine initialized
+✅ Agent Brain initialized
 ```
 
 ### 8. Open Frontend
@@ -1033,6 +1302,9 @@ python test_chat.py
 
 # Test re-ranker
 python test_reranker.py
+
+# Test agent (CLI)
+python test_agent_cli.py
 ```
 
 ---
@@ -1050,6 +1322,11 @@ GROQ_API_KEY=gsk_xxxxxxxxxxxxx
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_KEY=eyJ...
 # Get from: Supabase → Settings → API
+
+# OPTIONAL: Premium Web Search (Planned for Web Search — Phase 2.1)
+TAVILY_API_KEY=tvly_xxxxxxxxxxxxx
+# Get from: https://tavily.com
+# Note: Web search is currently disabled; this key is for future use
 
 # OPTIONAL: Application Settings
 ENVIRONMENT=development  # or "production"
@@ -1114,6 +1391,16 @@ for chunk in response:
         yield chunk.delta
 ```
 
+**In `app/agent.py` (Agent Brain):**
+
+```python
+self.llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    api_key=settings.GROQ_API_KEY,
+    temperature=0.1,  # Lower for deterministic tool routing
+)
+```
+
 **Available Groq Models:**
 - `llama-3.3-70b-versatile` (recommended)
 - `llama-3-70b-8192`
@@ -1132,8 +1419,9 @@ for chunk in response:
 | Embedding generation | 50-100ms | ✅ Already optimized (CPU-only model) |
 | Hybrid search | 200-500ms | Depends on chunk count & indexing |
 | Re-ranking | 100-200ms | Trade-off: accuracy vs speed |
+| Agent tool execution | 500-1500ms | Depends on tool (Calc/RAG) |
 | LLM first token | 200-500ms | Depends on Groq (not optimizable) |
-| **Total** | **3-5s** | Within acceptable range |
+| **Total** | **3-6s** | Within acceptable range |
 
 ### Tuning Strategies
 
@@ -1176,12 +1464,73 @@ WITH (lists = 200);  -- Increased from 100
 - Empty system: ~500MB (Python + dependencies)
 - After loading RAG engine: ~1.2GB (includes embeddings model)
 - After loading re-ranker: ~1.5GB (includes CrossEncoder)
+- After loading Agent Brain: ~1.6GB (includes LangChain/LangGraph)
 - Per concurrent user: ~50MB (conversation history)
 
 **To Reduce Memory:**
 - Use smaller embedding model (trade-off: less accurate)
 - Lazy-load re-ranker (only when needed)
 - Limit conversation history length
+
+---
+
+## Security Features
+
+✅ File extension whitelist (PDF, DOCX, TXT only)  
+✅ File size limits (10MB max per upload)  
+✅ Service role key for backend (no anonymous access)  
+✅ Temporary file cleanup after processing  
+✅ Input validation via Pydantic models  
+✅ CORS configured for localhost  
+✅ Error handling with safe messages  
+✅ No credential exposure in logs  
+✅ Safe calculator with regex-based expression validation (prevents code injection)  
+
+**Calculator Security Details:**
+
+The agent's calculator tool only accepts expressions matching `^[\d+\-*/().\s]+$`. Any other characters (letters, imports, function calls) are rejected before evaluation, preventing arbitrary code execution.
+
+```python
+if not re.match(r'^[\d+\-*/().\s]+$', expression):
+    return "Error: Invalid characters in expression"
+```
+
+---
+
+## Example Usage
+
+### Standard RAG Mode
+
+```
+User: "What is in the document?"
+Assistant: "The document contains information about..."
+
+User: "Aur batao" (Hindi: Tell me more)
+Assistant: "Based on the previous context, additionally..."
+
+User: "Search in Resume.pdf"
+(Select "Resume.pdf" from dropdown)
+User: "What are the key skills?"
+Assistant: (searches only in Resume.pdf)
+```
+
+### Agent Mode Example
+
+```
+User: "Calculate 15% of 256 and tell me what my resume says about Python"
+
+💭 Thought: This query has two parts — a math calculation and a document search.
+            I'll use the calculator for 15% of 256, then search the resume for Python.
+
+💭 Thought: Calling calculator tool with expression: 256 * 0.15
+💭 Thought: Result is 38.4. Now searching uploaded documents for Python skills...
+
+💭 Thought: Calling RAG search tool with query: "Python skills experience"
+💭 Thought: Found relevant resume chunks mentioning Python, Django, and data analysis.
+
+Assistant: "15% of 256 is 38.4. According to your resume, you have strong Python
+           experience including Django development and data analysis projects."
+```
 
 ---
 
@@ -1204,6 +1553,24 @@ python -m uvicorn app.main:app --reload --port 8000
 # 2. Wait 3-5 seconds for RAG engine to load
 # 3. Test health endpoint
 curl http://localhost:8000/health
+```
+
+### Issue: "Agent Brain not initialized"
+
+**Symptom:**
+```json
+{"detail": "Agent Brain not initialized"}
+```
+
+**Cause:** Agent failed to initialize at startup (often LangChain dependency issue)
+
+**Solution:**
+```bash
+# 1. Verify LangChain dependencies are installed
+pip install langchain langgraph langchain-groq langchain-community
+
+# 2. Restart backend and check startup logs for "✅ Agent Brain initialized"
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### Issue: "No relevant documents found"
@@ -1396,6 +1763,7 @@ If you encounter an issue not listed above:
    # Test individual components
    python testRag.py
    python test_retrieval.py
+   python test_agent_cli.py
    ```
 
 4. **Review documentation:**
@@ -1411,63 +1779,98 @@ These features are not yet implemented but are planned:
 
 ### High Priority (Production Readiness)
 
-1. **Document Management UI**
+1. **🌐 Enable Web Search (DuckDuckGo/Tavily integration)**
+   - Re-enable `web_search` tool after resolving dependency conflicts
+   - Tavily API key support already scaffolded
+
+2. **🤝 Human-in-the-Loop (HITL)**
+   - Approval gates before tool execution
+   - User confirmation for sensitive actions
+
+3. **🧠 Long-Term Memory**
+   - Persistent agent memory across sessions
+   - User preference learning
+
+4. **📊 Advanced Code Interpreter**
+   - CSV analysis and graph generation
+   - Data visualization from uploaded files
+
+5. **Document Management UI**
    - View uploaded documents
    - Delete documents
    - Re-process documents
    - Document statistics
 
-2. **User Authentication**
+6. **User Authentication**
    - User login/signup
    - JWT token validation
    - Per-user document isolation
    - Usage quotas
 
-3. **Database Conversation Persistence**
+7. **Database Conversation Persistence**
    - Store conversations in Supabase
    - Retrieve conversation history across sessions
    - Multi-device synchronization
 
 ### Medium Priority (Functionality)
 
-4. **Advanced Re-ranking**
+8. **📄 File Generation (PDF/Excel)**
+   - Export agent responses and reports
+   - Generate structured documents from queries
+
+9. **Advanced Re-ranking**
    - Multiple re-ranker models
    - Configurable re-ranking weights
    - Custom scoring functions
 
-5. **Rate Limiting**
-   - Prevent API abuse
-   - User-based quota system
-   - Graceful degradation
+10. **Rate Limiting**
+    - Prevent API abuse
+    - User-based quota system
+    - Graceful degradation
 
-6. **Analytics & Monitoring**
-   - Query success rate tracking
-   - User engagement metrics
-   - Performance dashboards
-   - Error rate monitoring
+11. **Analytics & Monitoring**
+    - Query success rate tracking
+    - User engagement metrics
+    - Performance dashboards
+    - Error rate monitoring
+
+12. **Multi-Agent Orchestration**
+    - Specialized sub-agents for different tasks
+    - Coordinated multi-step workflows
 
 ### Low Priority (Polish)
 
-7. **UI Enhancements**
-   - Dark mode support
-   - Conversation export (PDF/JSON)
-   - Markdown rendering in responses
-   - Code syntax highlighting
+13. **UI Enhancements**
+    - Dark mode support
+    - Conversation export (PDF/JSON)
+    - Markdown rendering in responses
+    - Code syntax highlighting
 
-8. **Model Options**
-   - Pluggable LLM selection
-   - Custom embedding models
-   - Fine-tuned re-rankers
+14. **Model Options**
+    - Pluggable LLM selection
+    - Custom embedding models
+    - Fine-tuned re-rankers
 
-9. **Deployment**
-   - Docker containerization
-   - Kubernetes deployment
-   - CI/CD pipeline
-   - Automated testing
+15. **Deployment**
+    - Docker containerization
+    - Kubernetes deployment
+    - CI/CD pipeline
+    - Automated testing
 
 ---
 
 ## Changelog
+
+### v2.0.0 (July 2026)
+
+**Added:**
+- ✅ Agentic RAG system with LangChain & LangGraph
+- ✅ ReAct pattern implementation
+- ✅ Dynamic tool routing (RAG & Calculator)
+- ✅ Real-time thought streaming via SSE
+- ✅ Dual-mode interface (RAG vs Agent Mode)
+- ✅ POST /chat-agent and /chat-agent-stream endpoints
+- ✅ Safe calculator tool (regex validation)
 
 ### v1.1.0 (June 2026)
 
@@ -1504,6 +1907,34 @@ These features are not yet implemented but are planned:
 
 ---
 
+## FAQ
+
+**Q: How does the Agent decide which tool to use?**  
+A: The Agent uses the ReAct (Reason + Act) pattern via LangGraph. It analyzes the query intent and selects the appropriate tool — `rag_search` for document questions, `calculator` for math. The system prompt guides the agent to use tools sequentially for hybrid queries.
+
+**Q: Is Web Search available?**  
+A: No. Web search (`web_search` via DuckDuckGo/Tavily) is currently disabled due to dependency conflicts. It is planned for Phase 2.1. The agent will politely inform users when real-time internet data is requested.
+
+**Q: Why does the re-ranker improve accuracy?**  
+A: It uses a trained CrossEncoder that understands semantic relevance to your specific query, filtering out less relevant chunks that BM25 might have ranked high.
+
+**Q: Can I use different embeddings?**  
+A: Yes, update `HuggingFaceEmbedding` in `rag_engine.py`. Ensure dimensions match your Supabase vector column (currently 384).
+
+**Q: How much does it cost?**  
+A: $0 for hobby projects. Supabase free tier, Groq free tier. Scale-up costs depend on usage.
+
+**Q: Does it work offline?**  
+A: No, requires internet for Groq LLM API and Supabase database.
+
+**Q: Can I filter searches by document?**  
+A: Yes! Use the dropdown in the Chat tab to search within specific documents. In Agent Mode, pass `source_filter` in the request body.
+
+**Q: Why is the first token slow?**  
+A: First token includes cold-start latency from Groq's infrastructure. Agent Mode adds tool execution time (500-1500ms) before the answer streams.
+
+---
+
 ## License
 
 MIT License - See LICENSE file for details
@@ -1517,6 +1948,6 @@ MIT License - See LICENSE file for details
 
 ---
 
-**Last Updated:** June 2026  
-**Version:** 1.1.0  
-**Status:** Working Prototype
+**Last Updated:** July 2026  
+**Version:** 2.0.0  
+**Status:** Production Ready
